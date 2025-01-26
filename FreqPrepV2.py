@@ -752,7 +752,7 @@ class MainWindow(QMainWindow):
         elif self.month_checkbox.isChecked():
             return 'ME'  # Month
         elif self.year_checkbox.isChecked():
-            return 'AE'  # Year (Annual)
+            return 'YE'  # Year (Annual)
         return None
 
     def get_selected_operation_type(self):
@@ -778,48 +778,169 @@ class MainWindow(QMainWindow):
         # Create a table widget
         num_rows = 3 + max(len(data) for data in processed_data.values())  # 3 header rows + max data rows
         num_columns = 1 + len(processed_data)  # 1 for Datetime + 1 for each DSN
-        table = QTableWidget(self.preview_dialog)
-        table.setRowCount(num_rows)
-        table.setColumnCount(num_columns)
+        self.preview_table = QTableWidget(self.preview_dialog)  # Assign to self.preview_table
+        self.preview_table.setRowCount(num_rows)
+        self.preview_table.setColumnCount(num_columns)
 
         # Set the headers
-        table.setItem(0, 0, QTableWidgetItem("Datetime"))
+        self.preview_table.setItem(0, 0, QTableWidgetItem("DSN"))
         for col, dsn in enumerate(processed_data.keys(), start=1):
-            table.setItem(0, col, QTableWidgetItem(f"DSN {dsn}"))
+            self.preview_table.setItem(0, col, QTableWidgetItem(f"{dsn}"))
 
-        table.setItem(1, 0, QTableWidgetItem("Attribute"))
+        # Determine the selected operation type
+        operation_type = self.get_selected_operation_type()
+        if operation_type is None:
+            operation_type = "Unknown"  # Fallback if no operation is selected
+
+        self.preview_table.setItem(1, 0, QTableWidgetItem("Attribute"))
         for col in range(1, num_columns):
-            table.setItem(1, col, QTableWidgetItem("Min"))  # Example: Min, Max, etc.
+            self.preview_table.setItem(1, col,
+                                       QTableWidgetItem(operation_type.capitalize()))  # Use the selected operation
 
-        table.setItem(2, 0, QTableWidgetItem("Decimal Places"))
+        self.preview_table.setItem(2, 0, QTableWidgetItem("Decimal"))
         decimal_inputs = []
         for col in range(1, num_columns):
             decimal_input = QLineEdit("2")  # Default to 2 decimal places
             decimal_input.setValidator(QIntValidator(0, 10))
-            decimal_input.textChanged.connect(lambda _, c=col: self.update_decimal_places(table, c, processed_data))
-            table.setCellWidget(2, col, decimal_input)
+            decimal_input.textChanged.connect(
+                lambda _, c=col: self.update_decimal_places(self.preview_table, c, processed_data))
+            self.preview_table.setCellWidget(2, col, decimal_input)
             decimal_inputs.append(decimal_input)
 
         # Populate the table with data
         row_offset = 3  # Start after header rows
         for i, index in enumerate(processed_data[next(iter(processed_data))].index):
-            table.setItem(row_offset + i, 0, QTableWidgetItem(str(index)))
+            self.preview_table.setItem(row_offset + i, 0, QTableWidgetItem(str(index)))
             for col, (dsn, data) in enumerate(processed_data.items(), start=1):
                 value = data.loc[index].iloc[0] if index in data.index else None
                 if value is not None:
                     decimal_places = int(decimal_inputs[col - 1].text())
-                    table.setItem(row_offset + i, col, QTableWidgetItem(f"{value:.{decimal_places}f}"))
+                    self.preview_table.setItem(row_offset + i, col, QTableWidgetItem(f"{value:.{decimal_places}f}"))
 
         # Set column headers
-        table.setHorizontalHeaderLabels(["Datetime"] + [f"Values (DSN {dsn})" for dsn in processed_data.keys()])
+        self.preview_table.setHorizontalHeaderLabels(
+            ["Datetime"] + [f"Values (DSN {dsn})" for dsn in processed_data.keys()])
 
-        # Add the table to the dialog layout
+        # Create buttons
+        copy_button = QPushButton("Copy")
+        copy_button.clicked.connect(lambda: self.copy_dsn_data(self.preview_table))
+
+        validate_button = QPushButton("Validate")
+        validate_button.clicked.connect(self.enable_export_options)
+
+        # Add the table and buttons to the dialog layout
         dialog_layout = QVBoxLayout()
-        dialog_layout.addWidget(table)
+        dialog_layout.addWidget(self.preview_table)  # Use self.preview_table
+        dialog_layout.addWidget(copy_button)
+        dialog_layout.addWidget(validate_button)
         self.preview_dialog.setLayout(dialog_layout)
 
         # Show the dialog window
         self.preview_dialog.exec()
+
+    def copy_dsn_data(self, table):
+        """Copy the DSN data to the clipboard, including the DSN row."""
+        clipboard_data = []
+
+        # Copy the DSN row (first row)
+        dsn_row_data = []
+        for col in range(table.columnCount()):
+            item = table.item(0, col)
+            if item:
+                dsn_row_data.append(item.text())
+        clipboard_data.append("\t".join(dsn_row_data))
+
+        # Copy the values starting from the 4th row
+        for row in range(3, table.rowCount()):  # Start from the 4th row to skip headers
+            row_data = []
+            for col in range(table.columnCount()):
+                item = table.item(row, col)
+                if item:
+                    row_data.append(item.text())
+            clipboard_data.append("\t".join(row_data))
+
+        # Join all rows into a single string and set it to the clipboard
+        clipboard_text = "\n".join(clipboard_data)
+        QApplication.clipboard().setText(clipboard_text)
+
+    def enable_export_options(self):
+        """Enable the export options."""
+        # Create a dialog window for export options
+        self.export_dialog = QDialog(self)
+        self.export_dialog.setWindowTitle("Export Options")
+        self.export_dialog.setMinimumWidth(300)
+
+        # Create export buttons
+        txt_export_button = QPushButton("Export to .txt")
+        txt_export_button.clicked.connect(self.export_to_txt)
+
+        cfa_export_old_button = QPushButton("CFA Export-OLD")
+        cfa_export_new_button = QPushButton("CFA Export-NEW")
+        ssp_export_button = QPushButton("SSP-Export")
+
+        # Add buttons to the dialog layout
+        dialog_layout = QVBoxLayout()
+        dialog_layout.addWidget(txt_export_button)
+        dialog_layout.addWidget(cfa_export_old_button)
+        dialog_layout.addWidget(cfa_export_new_button)
+        dialog_layout.addWidget(ssp_export_button)
+        self.export_dialog.setLayout(dialog_layout)
+
+        # Show the export dialog
+        self.export_dialog.exec()
+
+    def export_to_txt(self):
+        """Export data preview, DSN metadata, and scenario title to a .txt file."""
+        # Get the file path to save the .txt file
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save File", "", "Text Files (*.txt);;All Files (*.*)")
+        if not file_path:
+            return  # User canceled the save dialog
+
+        try:
+            with open(file_path, 'w') as file:
+                # Write scenario title
+                scenario_title = self.scenario_input.text()
+                file.write(f"Scenario Title: {scenario_title}\n\n")
+
+                # Write DSN metadata
+                file.write("DSN Metadata:\n")
+                for dsn, metadata in self.metadata_store.items():
+                    file.write(f"DSN {dsn}:\n")
+                    for key, value in metadata.items():
+                        file.write(f"  {key}: {value}\n")
+                file.write("\n")
+
+                # Write data preview headers
+                for row in range(3):  # Include the first three header rows
+                    row_data = []
+                    for col in range(self.preview_table.columnCount()):
+                        item = self.preview_table.item(row, col)
+                        if item:
+                            row_data.append(item.text())
+                    file.write("\t".join(row_data) + "\n")
+
+                # Write data preview values with correct decimal precision
+                for row in range(3, self.preview_table.rowCount()):  # Start from the 4th row for data
+                    row_data = []
+                    for col in range(self.preview_table.columnCount()):
+                        item = self.preview_table.item(row, col)
+                        if item:
+                            # Check if the column is a DSN column and apply decimal precision
+                            if col > 0:  # Assuming first column is "Datetime"
+                                decimal_input = self.preview_table.cellWidget(2, col)
+                                if decimal_input:
+                                    decimal_places = int(decimal_input.text())
+                                    value = float(item.text())
+                                    row_data.append(f"{value:.{decimal_places}f}")
+                                else:
+                                    row_data.append(item.text())
+                            else:
+                                row_data.append(item.text())
+                    file.write("\t".join(row_data) + "\n")
+
+            self.show_message("Data exported successfully to .txt file.")
+        except Exception as e:
+            self.show_error(f"Error exporting data: {e}")
 
     def update_decimal_places(self, table, col, processed_data):
         """Update the decimal places for a specific DSN column in real-time."""
@@ -881,8 +1002,27 @@ class MainWindow(QMainWindow):
         # Add the error dialog to the main layout
         self.main_layout.addWidget(self.error_dialog)
 
-        # Schedule the error dialog to be removed after 5 seconds
-        QTimer.singleShot(5000, self.remove_error)
+        # Schedule the error dialog to be removed after 2 seconds
+        QTimer.singleShot(2000, self.remove_error)
+
+    def show_message(self, message: str):
+        """Display a success message."""
+        # Remove any existing message
+        if hasattr(self, 'error_dialog') and self.error_dialog is not None:
+            self.main_layout.removeWidget(self.error_dialog)
+            self.error_dialog.deleteLater()
+            self.error_dialog = None
+
+        # Create a QLabel for the success message
+        self.error_dialog = QLabel(f"<p style='color: green;'>{message}</p>")
+        self.error_dialog.setFrameStyle(QLabel.Panel | QLabel.Sunken)
+        self.error_dialog.setAlignment(Qt.AlignCenter)
+
+        # Add the message dialog to the main layout
+        self.main_layout.addWidget(self.error_dialog)
+
+        # Schedule the message dialog to be removed after 2 seconds
+        QTimer.singleShot(2000, self.remove_error)
 
     def remove_error(self):
         """Safely remove the error widget from the main layout."""
@@ -890,6 +1030,9 @@ class MainWindow(QMainWindow):
             self.main_layout.removeWidget(self.error_dialog)
             self.error_dialog.deleteLater()
             self.error_dialog = None
+
+        # Optionally, adjust the window size if needed
+        self.adjustSize()
 
 def main():
     app = QApplication([])
