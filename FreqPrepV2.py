@@ -5,11 +5,12 @@ import plotly.graph_objects as go
 from wdmtoolbox import wdmtoolbox
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QPushButton, QFileDialog, QLabel, QWidget, QLineEdit, QHBoxLayout, QScrollArea, QDialog
-, QCheckBox, QGridLayout, QProgressBar, QTableWidget, QTableWidgetItem )
+, QCheckBox, QGridLayout, QProgressBar, QTableWidget, QTableWidgetItem, QGroupBox, QButtonGroup )
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from typing import List
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtGui import QIntValidator
 
 METADATA_FIELDS = [
     {"name": "RCHRES ID", "label": "RCHRES ID"},  # Field 1
@@ -62,6 +63,9 @@ def process_wdm(file_path: str, selected_dsns: List[int]) -> pd.DataFrame:
 
             # Add DSN data as a column, ensuring 1D format
             combined_data[dsn] = data.values.ravel()  # Flatten to 1D
+
+        if combined_data.empty:
+            raise ValueError("No data extracted from the WDM file.")
 
         combined_data.index = data.index  # Use the time index from the last DSN
         return combined_data
@@ -169,6 +173,128 @@ class MainWindow(QMainWindow):
         self.dsn_details_button.setStyleSheet("background-color: grey; color: white;")  # Initial gray color
         self.dsn_details_button.clicked.connect(self.open_dsn_details_table)  # Connect to future table function
 
+        # Reset Selected DSNs Button
+        self.reset_dsns_button = QPushButton("Reset Selected DSNs")
+        self.reset_dsns_button.clicked.connect(self.reset_selected_dsns)
+        self.dsn_section_layout.addWidget(self.reset_dsns_button)
+
+        # Create a new group box for data manipulation options
+        self.data_manipulation_group = QGroupBox("Data Extraction/Manipulation")
+        self.data_manipulation_layout = QVBoxLayout()
+
+        # Add a new layout to the group box for Temporal Interval options
+        self.temporal_interval_layout = QHBoxLayout()
+        self.temporal_interval_layout.setSpacing(10)
+        self.temporal_interval_label = QLabel("Select Temporal Interval:")
+        self.temporal_interval_layout.addWidget(self.temporal_interval_label)
+
+        # Create checkboxes for temporal intervals (Second, Minute, Hour, Day, Month, Year)
+        self.second_checkbox = QCheckBox("Second")
+        self.minute_checkbox = QCheckBox("Minute")
+        self.hour_checkbox = QCheckBox("Hour")
+        self.day_checkbox = QCheckBox("Day")
+        self.month_checkbox = QCheckBox("Month")
+        self.year_checkbox = QCheckBox("Year")
+
+        # Add checkboxes to the layout
+        self.temporal_interval_layout.addWidget(self.second_checkbox)
+        self.temporal_interval_layout.addWidget(self.minute_checkbox)
+        self.temporal_interval_layout.addWidget(self.hour_checkbox)
+        self.temporal_interval_layout.addWidget(self.day_checkbox)
+        self.temporal_interval_layout.addWidget(self.month_checkbox)
+        self.temporal_interval_layout.addWidget(self.year_checkbox)
+
+        # Add temporal interval layout to the group box
+        self.data_manipulation_layout.addLayout(self.temporal_interval_layout)
+
+        # Create a new layout for Operation Type options (Sum, Average, Min, Max)
+        self.operation_type_layout = QHBoxLayout()
+        self.operation_type_layout.setSpacing(100)
+        self.operation_type_label = QLabel("Select Operation:")
+        self.operation_type_layout.addWidget(self.operation_type_label)
+
+        # Create checkboxes for operation types (Sum, Average, Min, Max)
+        self.sum_checkbox = QCheckBox("Sum")
+        self.average_checkbox = QCheckBox("Average")
+        self.min_checkbox = QCheckBox("Min")
+        self.max_checkbox = QCheckBox("Max")
+
+        # Add checkboxes to the layout
+        self.operation_type_layout.addWidget(self.sum_checkbox)
+        self.operation_type_layout.addWidget(self.average_checkbox)
+        self.operation_type_layout.addWidget(self.min_checkbox)
+        self.operation_type_layout.addWidget(self.max_checkbox)
+
+        # Add operation type layout to the group box
+        self.data_manipulation_layout.addLayout(self.operation_type_layout)
+
+        # Add this code after the operation type layout in the MainWindow class
+
+        # Decimal Points Selection
+        self.decimal_points_label = QLabel("Decimal Points:")
+        self.decimal_points_input = QLineEdit()
+        self.decimal_points_input.setPlaceholderText("Enter number of decimal points")
+        self.decimal_points_input.setValidator(QIntValidator(0, 10))  # Allow only integers between 0 and 10
+        # Set default value for decimal points
+        self.decimal_points_input.setText("2")
+
+        self.decimal_points_layout = QHBoxLayout()
+        self.decimal_points_layout.addWidget(self.decimal_points_label)
+        self.decimal_points_layout.addWidget(self.decimal_points_input)
+
+        # Add decimal points layout to the data manipulation group
+        self.data_manipulation_layout.addLayout(self.decimal_points_layout)
+
+        # Create Native button (this will disable both checkboxes when selected)
+        self.native_button = QPushButton("Native")
+        self.native_button.clicked.connect(self.toggle_native_mode)
+        self.data_manipulation_layout.addWidget(self.native_button)
+
+        # Style the checkboxes to change the tick color to green
+        self.second_checkbox.setStyleSheet(
+            "QCheckBox::indicator:checked { background-color: green; border: 1px solid green; }")
+        self.minute_checkbox.setStyleSheet(
+            "QCheckBox::indicator:checked { background-color: green; border: 1px solid green; }")
+        self.hour_checkbox.setStyleSheet(
+            "QCheckBox::indicator:checked { background-color: green; border: 1px solid green; }")
+        self.day_checkbox.setStyleSheet(
+            "QCheckBox::indicator:checked { background-color: green; border: 1px solid green; }")
+        self.month_checkbox.setStyleSheet(
+            "QCheckBox::indicator:checked { background-color: green; border: 1px solid green; }")
+        self.year_checkbox.setStyleSheet(
+            "QCheckBox::indicator:checked { background-color: green; border: 1px solid green; }")
+        self.sum_checkbox.setStyleSheet(
+            "QCheckBox::indicator:checked { background-color: green; border: 1px solid green; }")
+        self.average_checkbox.setStyleSheet(
+            "QCheckBox::indicator:checked { background-color: green; border: 1px solid green; }")
+        self.min_checkbox.setStyleSheet(
+            "QCheckBox::indicator:checked { background-color: green; border: 1px solid green; }")
+        self.max_checkbox.setStyleSheet(
+            "QCheckBox::indicator:checked { background-color: green; border: 1px solid green; }")
+
+        # Button groups to enforce single checkbox selection
+        self.temporal_button_group = QButtonGroup()
+        self.temporal_button_group.addButton(self.second_checkbox)
+        self.temporal_button_group.addButton(self.minute_checkbox)
+        self.temporal_button_group.addButton(self.hour_checkbox)
+        self.temporal_button_group.addButton(self.day_checkbox)
+        self.temporal_button_group.addButton(self.month_checkbox)
+        self.temporal_button_group.addButton(self.year_checkbox)
+
+        self.operation_button_group = QButtonGroup()
+        self.operation_button_group.addButton(self.sum_checkbox)
+        self.operation_button_group.addButton(self.average_checkbox)
+        self.operation_button_group.addButton(self.min_checkbox)
+        self.operation_button_group.addButton(self.max_checkbox)
+
+        # Create Data Preview Button
+        self.preview_button = QPushButton("Data Preview")
+        self.preview_button.clicked.connect(self.preview_data)
+        self.data_manipulation_layout.addWidget(self.preview_button)
+
+        # Add layout to the group box
+        self.data_manipulation_group.setLayout(self.data_manipulation_layout)
+
         # Add Select DSNs and Selected DSNs to DSN Section Layout
         self.dsn_section_layout.addWidget(self.dsn_label)
         self.dsn_section_layout.addWidget(self.dsn_button_scroll)
@@ -187,6 +313,7 @@ class MainWindow(QMainWindow):
         self.main_layout.addLayout(self.scenario_layout)  # Scenario title input
         self.main_layout.addLayout(self.dsn_section_layout)  # DSN section
         self.main_layout.addWidget(self.progress_bar)  # Progress bar
+        self.main_layout.addWidget(self.data_manipulation_group)  # Assuming main_layout is already defined
 
         # Set the main layout to the central widget
         self.main_widget.setLayout(self.main_layout)
@@ -337,6 +464,14 @@ class MainWindow(QMainWindow):
         # Refresh the selected DSNs display
         self.selected_dsns_display.setText(", ".join(map(str, sorted(self.selected_dsns))))  # Display sorted DSNs
         dialog.accept()
+
+    def reset_selected_dsns(self):
+        """Reset the list of selected DSNs."""
+        self.selected_dsns.clear()  # Clear the list of selected DSNs
+        self.selected_dsns_display.setText("")  # Clear the display of selected DSNs
+
+        # Optionally, update any UI elements that depend on the selected DSNs
+        # For example, disable buttons or clear tables if needed
 
     def open_dsn_details_table(self):
         """Open a dialog with a table for editing DSN metadata."""
@@ -532,6 +667,179 @@ class MainWindow(QMainWindow):
         self.selected_dsns = selected_dsns
         self.selected_dsns_display.setText(", ".join(map(str, self.selected_dsns)))
 
+    def toggle_native_mode(self):
+        """Enable/disable temporal and operation checkboxes for native mode."""
+        if self.native_button.isChecked():
+            # Disable all temporal and operation checkboxes
+            self.second_checkbox.setEnabled(False)
+            self.minute_checkbox.setEnabled(False)
+            self.hour_checkbox.setEnabled(False)
+            self.day_checkbox.setEnabled(False)
+            self.month_checkbox.setEnabled(False)
+            self.year_checkbox.setEnabled(False)
+            self.sum_checkbox.setEnabled(False)
+            self.average_checkbox.setEnabled(False)
+            self.min_checkbox.setEnabled(False)
+            self.max_checkbox.setEnabled(False)
+        else:
+            # Enable all checkboxes when native mode is disabled
+            self.second_checkbox.setEnabled(True)
+            self.minute_checkbox.setEnabled(True)
+            self.hour_checkbox.setEnabled(True)
+            self.day_checkbox.setEnabled(True)
+            self.month_checkbox.setEnabled(True)
+            self.year_checkbox.setEnabled(True)
+            self.sum_checkbox.setEnabled(True)
+            self.average_checkbox.setEnabled(True)
+            self.min_checkbox.setEnabled(True)
+            self.max_checkbox.setEnabled(True)
+
+    def preview_data(self):
+        """Handle the data preview logic, based on selected options."""
+        if not self.selected_dsns:
+            self.show_error("No DSNs selected. Please select DSNs first.")
+            return
+
+        file_path = self.file_input.text()
+        if not file_path:
+            self.show_error("Please select a WDM file.")
+            return
+
+        # Get the selected temporal interval and operation type
+        temporal_interval = self.get_selected_temporal_interval()
+        operation_type = self.get_selected_operation_type()
+
+        if not temporal_interval or not operation_type:
+            self.show_error("Please select both temporal interval and operation type.")
+            return
+
+        # Get the number of decimal points
+        decimal_points_text = self.decimal_points_input.text()
+        if not decimal_points_text:
+            self.show_error("Please enter a valid number of decimal points.")
+            return
+
+        try:
+            decimal_points = int(decimal_points_text)
+        except ValueError:
+            self.show_error("Please enter a valid number of decimal points.")
+            return
+
+        try:
+            # Process data for each selected DSN
+            processed_data = {}
+            for dsn in self.selected_dsns:
+                data = process_wdm(file_path, [dsn])
+                resampled_data = data.resample(temporal_interval).agg(operation_type)
+                processed_data[dsn] = resampled_data.round(decimal_points)
+
+            # Show processed data preview
+            self.show_data_preview(processed_data)
+
+        except ValueError as e:
+            self.show_error(str(e))
+
+    def get_selected_temporal_interval(self):
+        """Retrieve the selected temporal interval."""
+        if self.second_checkbox.isChecked():
+            return 'S'  # Second
+        elif self.minute_checkbox.isChecked():
+            return 'T'  # Minute
+        elif self.hour_checkbox.isChecked():
+            return 'H'  # Hour
+        elif self.day_checkbox.isChecked():
+            return 'D'  # Day
+        elif self.month_checkbox.isChecked():
+            return 'ME'  # Month
+        elif self.year_checkbox.isChecked():
+            return 'AE'  # Year (Annual)
+        return None
+
+    def get_selected_operation_type(self):
+        """Retrieve the selected operation type."""
+        if self.sum_checkbox.isChecked():
+            return 'sum'
+        elif self.average_checkbox.isChecked():
+            return 'average'
+        elif self.min_checkbox.isChecked():
+            return 'min'
+        elif self.max_checkbox.isChecked():
+            return 'max'
+        return None
+
+    def show_data_preview(self, processed_data):
+        """Display data preview in a table format with real-time decimal updates."""
+        # Create a dialog window
+        self.preview_dialog = QDialog(self)
+        self.preview_dialog.setWindowTitle("Data Preview")
+        self.preview_dialog.setMinimumWidth(600)
+        self.preview_dialog.setMinimumHeight(400)
+
+        # Create a table widget
+        num_rows = 3 + max(len(data) for data in processed_data.values())  # 3 header rows + max data rows
+        num_columns = 1 + len(processed_data)  # 1 for Datetime + 1 for each DSN
+        table = QTableWidget(self.preview_dialog)
+        table.setRowCount(num_rows)
+        table.setColumnCount(num_columns)
+
+        # Set the headers
+        table.setItem(0, 0, QTableWidgetItem("Datetime"))
+        for col, dsn in enumerate(processed_data.keys(), start=1):
+            table.setItem(0, col, QTableWidgetItem(f"DSN {dsn}"))
+
+        table.setItem(1, 0, QTableWidgetItem("Attribute"))
+        for col in range(1, num_columns):
+            table.setItem(1, col, QTableWidgetItem("Min"))  # Example: Min, Max, etc.
+
+        table.setItem(2, 0, QTableWidgetItem("Decimal Places"))
+        decimal_inputs = []
+        for col in range(1, num_columns):
+            decimal_input = QLineEdit("2")  # Default to 2 decimal places
+            decimal_input.setValidator(QIntValidator(0, 10))
+            decimal_input.textChanged.connect(lambda _, c=col: self.update_decimal_places(table, c, processed_data))
+            table.setCellWidget(2, col, decimal_input)
+            decimal_inputs.append(decimal_input)
+
+        # Populate the table with data
+        row_offset = 3  # Start after header rows
+        for i, index in enumerate(processed_data[next(iter(processed_data))].index):
+            table.setItem(row_offset + i, 0, QTableWidgetItem(str(index)))
+            for col, (dsn, data) in enumerate(processed_data.items(), start=1):
+                value = data.loc[index].iloc[0] if index in data.index else None
+                if value is not None:
+                    decimal_places = int(decimal_inputs[col - 1].text())
+                    table.setItem(row_offset + i, col, QTableWidgetItem(f"{value:.{decimal_places}f}"))
+
+        # Set column headers
+        table.setHorizontalHeaderLabels(["Datetime"] + [f"Values (DSN {dsn})" for dsn in processed_data.keys()])
+
+        # Add the table to the dialog layout
+        dialog_layout = QVBoxLayout()
+        dialog_layout.addWidget(table)
+        self.preview_dialog.setLayout(dialog_layout)
+
+        # Show the dialog window
+        self.preview_dialog.exec()
+
+    def update_decimal_places(self, table, col, processed_data):
+        """Update the decimal places for a specific DSN column in real-time."""
+        decimal_input = table.cellWidget(2, col)
+        if not decimal_input:
+            return
+
+        try:
+            decimal_places = int(decimal_input.text())
+        except ValueError:
+            return
+
+        row_offset = 3  # Start after header rows
+        dsn = list(processed_data.keys())[col - 1]
+        data = processed_data[dsn]
+
+        for i, index in enumerate(data.index):
+            value = data.loc[index].iloc[0]
+            table.setItem(row_offset + i, col, QTableWidgetItem(f"{value:.{decimal_places}f}"))
+
     def generate_plot(self):
         """Generate an interactive plot with Plotly."""
         file_path = self.file_input.text()
@@ -558,23 +866,30 @@ class MainWindow(QMainWindow):
             self.show_error(str(e))
 
     def show_error(self, message: str):
-        """Display an error message."""
-        # Create a QLabel for the error message
-        error_dialog = QLabel(f"<p style='color: red;'>{message}</p>")
-        error_dialog.setFrameStyle(QLabel.Panel | QLabel.Sunken)
-        error_dialog.setAlignment(Qt.AlignCenter)
+        """Display an error message, replacing any existing message."""
+        # Remove any existing error message
+        if hasattr(self, 'error_dialog') and self.error_dialog is not None:
+            self.main_layout.removeWidget(self.error_dialog)
+            self.error_dialog.deleteLater()
+            self.error_dialog = None
 
-        # Add the error dialog to the layout
-        self.layout.addWidget(error_dialog)
+        # Create a QLabel for the error message
+        self.error_dialog = QLabel(f"<p style='color: orange;'>{message}</p>")
+        self.error_dialog.setFrameStyle(QLabel.Panel | QLabel.Sunken)
+        self.error_dialog.setAlignment(Qt.AlignCenter)
+
+        # Add the error dialog to the main layout
+        self.main_layout.addWidget(self.error_dialog)
 
         # Schedule the error dialog to be removed after 5 seconds
-        QTimer.singleShot(5000, lambda: self.remove_error(error_dialog))
+        QTimer.singleShot(5000, self.remove_error)
 
-    def remove_error(self, widget):
-        """Safely remove the error widget from the layout."""
-        if widget in self.layout.children():
-            self.layout.removeWidget(widget)
-            widget.deleteLater()
+    def remove_error(self):
+        """Safely remove the error widget from the main layout."""
+        if hasattr(self, 'error_dialog') and self.error_dialog is not None:
+            self.main_layout.removeWidget(self.error_dialog)
+            self.error_dialog.deleteLater()
+            self.error_dialog = None
 
 def main():
     app = QApplication([])
