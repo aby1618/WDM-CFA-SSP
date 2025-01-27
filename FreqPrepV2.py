@@ -119,6 +119,8 @@ class MainWindow(QMainWindow):
         self.metadata_store = {}  # Initialize metadata store for saving DSN metadata
         # Initialize processed_data as an empty dictionary
         self.processed_data = {}
+        self.river_name = ""  # Store river name for the session
+        self.years_to_skip = []  # Store years to skip for the session
 
         self.setWindowTitle("WDM Data Extractor Tool")
         self.setGeometry(100, 100, 1200, 300)  # Set window size (width=1200, height=300)
@@ -1020,7 +1022,7 @@ class MainWindow(QMainWindow):
 
         for dsn, data in self.processed_data.items():
             # Skip specified years
-            data_to_export = data[~data.index.year.isin(years_to_skip)]
+            data_to_export = data[~data.index.year.isin(map(int, years_to_skip))]  # Convert years to integers
 
             # Open file for writing
             file_path = os.path.join(export_dir, f"{dsn}.prn")
@@ -1047,10 +1049,10 @@ class MainWindow(QMainWindow):
 
         # Create input fields
         river_name_label = QLabel("River Name:")
-        river_name_input = QLineEdit()
+        river_name_input = QLineEdit(self.river_name)  # Pre-fill with stored value
 
         years_to_skip_label = QLabel("Years to Skip (comma-separated):")
-        years_to_skip_input = QLineEdit()
+        years_to_skip_input = QLineEdit(','.join(self.years_to_skip))  # Pre-fill with stored value
 
         # Create the "Ready to Export" button
         export_button = QPushButton("Ready to Export")
@@ -1066,22 +1068,22 @@ class MainWindow(QMainWindow):
         dialog.setLayout(layout)
 
         # Show the dialog
-        dialog.exec_()
+        dialog.exec()
 
     def handle_export(self, dialog, river_name_input, years_to_skip_input):
         """Handle the export process when the user clicks 'Ready to Export'."""
-        river_name = river_name_input.text().strip()
-        if not river_name:
+        self.river_name = river_name_input.text().strip()
+        if not self.river_name:
             self.show_error("River Name is required for export.")
             return
 
-        years_to_skip = [year.strip() for year in years_to_skip_input.text().split(',') if year.strip()]
+        self.years_to_skip = [year.strip() for year in years_to_skip_input.text().split(',') if year.strip()]
 
         # Close the dialog
         dialog.accept()
 
         # Perform the export
-        self.export_cfa_old(river_name, years_to_skip)
+        self.export_cfa_old(self.river_name, self.years_to_skip)
 
     def update_decimal_places(self, table, col, processed_data):
         """Update the decimal places for a specific DSN column in real-time."""
