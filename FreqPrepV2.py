@@ -744,6 +744,8 @@ class MainWindow(QMainWindow):
             self.processed_data = {}  # Initialize or clear the dictionary
             for dsn in self.selected_dsns:
                 data = process_wdm(file_path, [dsn])
+
+                # Ensure the resampling includes all years
                 resampled_data = data.resample(temporal_interval).agg(operation_type)
                 self.processed_data[dsn] = resampled_data.round(decimal_points)
 
@@ -787,7 +789,7 @@ class MainWindow(QMainWindow):
         self.preview_dialog = QDialog(self)
         self.preview_dialog.setWindowTitle("Data Preview")
         self.preview_dialog.setMinimumWidth(1000)
-        self.preview_dialog.setMinimumHeight(800)
+        self.preview_dialog.setMinimumHeight(600)
 
         # Calculate number of data rows to display
         total_rows = max(len(data) for data in processed_data.values())
@@ -939,7 +941,7 @@ class MainWindow(QMainWindow):
         # Create a dialog window for export options
         self.export_dialog = QDialog(self)
         self.export_dialog.setWindowTitle("Export Options")
-        self.export_dialog.setMinimumWidth(500)
+        self.export_dialog.setMinimumWidth(800)
 
         # Create export buttons
         txt_export_button = QPushButton("Export to .txt")
@@ -949,6 +951,8 @@ class MainWindow(QMainWindow):
         cfa_export_old_button.clicked.connect(self.handle_cfa_export_old)  # Connect to the new method
 
         cfa_export_new_button = QPushButton("CFA Export-NEW")
+        cfa_export_new_button.clicked.connect(self.show_frequency_analysis_dialog)  # Connect to the new method
+
         ssp_export_button = QPushButton("SSP-Export")
 
         # Add buttons to the dialog layout
@@ -1051,7 +1055,7 @@ class MainWindow(QMainWindow):
         """Show a dialog to collect export details and trigger the export."""
         dialog = QDialog(self)
         dialog.setWindowTitle("CFA Export-OLD")
-        dialog.setMinimumWidth(400)
+        dialog.setMinimumWidth(800)
 
         # Create input fields
         river_name_label = QLabel("River Name:")
@@ -1090,6 +1094,52 @@ class MainWindow(QMainWindow):
 
         # Perform the export
         self.export_cfa_old(self.river_name, self.years_to_skip)
+
+    # Add the show_frequency_analysis_dialog method
+    def show_frequency_analysis_dialog(self):
+        """Show a dialog to collect details for frequency analysis."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("CFA Export-NEW")
+        dialog.setMinimumWidth(400)
+
+        # Create input fields
+        river_name_label = QLabel("River Name:")
+        river_name_input = QLineEdit(self.river_name)  # Pre-fill with stored value
+
+        years_to_skip_label = QLabel("Years to Skip (comma-separated):")
+        years_to_skip_input = QLineEdit(','.join(self.years_to_skip))  # Pre-fill with stored value
+
+        # Create the "Perform Frequency Analysis" button
+        analysis_button = QPushButton("Perform Frequency Analysis")
+        analysis_button.clicked.connect(lambda: self.handle_frequency_analysis(dialog, river_name_input, years_to_skip_input))
+
+        # Layout the dialog
+        layout = QVBoxLayout()
+        layout.addWidget(river_name_label)
+        layout.addWidget(river_name_input)
+        layout.addWidget(years_to_skip_label)
+        layout.addWidget(years_to_skip_input)
+        layout.addWidget(analysis_button)
+        dialog.setLayout(layout)
+
+        # Show the dialog
+        dialog.exec()
+
+    # Add the handle_frequency_analysis method
+    def handle_frequency_analysis(self, dialog, river_name_input, years_to_skip_input):
+        """Handle the frequency analysis process when the user clicks 'Perform Frequency Analysis'."""
+        self.river_name = river_name_input.text().strip()
+        if not self.river_name:
+            self.show_error("River Name is required for frequency analysis.")
+            return
+
+        self.years_to_skip = [year.strip() for year in years_to_skip_input.text().split(',') if year.strip()]
+
+        # Close the dialog
+        dialog.accept()
+
+        # Proceed with frequency analysis (to be implemented in Step 2)
+        self.perform_frequency_analysis(self.river_name, self.years_to_skip)
 
     def update_decimal_places(self, table, col, processed_data):
         """Update the decimal places for a specific DSN column in real-time."""
