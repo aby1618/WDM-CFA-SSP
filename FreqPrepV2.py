@@ -786,18 +786,21 @@ class MainWindow(QMainWindow):
         # Create a dialog window
         self.preview_dialog = QDialog(self)
         self.preview_dialog.setWindowTitle("Data Preview")
-        self.preview_dialog.setMinimumWidth(600)
-        self.preview_dialog.setMinimumHeight(400)
+        self.preview_dialog.setMinimumWidth(1000)
+        self.preview_dialog.setMinimumHeight(800)
 
-        # Create a table widget
+        # Calculate number of data rows to display
         total_rows = max(len(data) for data in processed_data.values())
-        num_rows = min(103, total_rows)  # Limit to 103 rows (60 + 5 + 35 + 3 headers)
-        num_columns = 1 + len(processed_data)  # 1 for Datetime + 1 for each DSN
-        self.preview_table = QTableWidget(self.preview_dialog)  # Assign to self.preview_table
-        self.preview_table.setRowCount(num_rows)
+        num_rows = min(100, total_rows)  # Limit to 103 rows (60 + 5 + 35 + 3 headers)
+
+        num_columns = 1 + len(processed_data)
+        header_rows = 3  # Number of header rows
+        total_table_rows = header_rows + num_rows  # total rows in the table
+        self.preview_table = QTableWidget(self.preview_dialog)
+        self.preview_table.setRowCount(total_table_rows)  # set the correct number of rows
         self.preview_table.setColumnCount(num_columns)
 
-        # Set the headers
+        # Set the headers (these should be set *before* populating data)
         self.preview_table.setItem(0, 0, QTableWidgetItem("DSN"))
         for col, dsn in enumerate(processed_data.keys(), start=1):
             self.preview_table.setItem(0, col, QTableWidgetItem(f"{dsn}"))
@@ -828,9 +831,9 @@ class MainWindow(QMainWindow):
             date_format = "%Y-%m-%d %H:%M"
         elif temporal_interval == 'h':  # Hourly
             date_format = "%Y-%m-%d %H"
-        elif temporal_interval == 'D':  # Hourly
+        elif temporal_interval == 'D':  # Daily
             date_format = "%Y-%m-%d"
-        elif temporal_interval == 'MS':  # Hourly
+        elif temporal_interval == 'MS':  # Monthly
             date_format = "%Y-%m"
         elif temporal_interval == 'YE':  # Yearly
             date_format = "%Y"
@@ -838,43 +841,46 @@ class MainWindow(QMainWindow):
             date_format = "%Y-%m-%d %H:%M:%S"  # Default format
 
         # Populate the table with data
-        row_offset = 3  # Start after header rows
         indices = processed_data[next(iter(processed_data))].index
+
         if total_rows > 100:
             # Show first 60 rows
             for i, index in enumerate(indices[:60]):
                 formatted_date = index.strftime(date_format)
-                self.preview_table.setItem(row_offset + i, 0, QTableWidgetItem(formatted_date))
+                self.preview_table.setItem(header_rows + i, 0, QTableWidgetItem(formatted_date))
                 for col, (dsn, data) in enumerate(processed_data.items(), start=1):
                     value = data.loc[index].iloc[0] if index in data.index else None
                     if value is not None:
                         decimal_places = int(decimal_inputs[col - 1].text())
-                        self.preview_table.setItem(row_offset + i, col, QTableWidgetItem(f"{value:.{decimal_places}f}"))
+                        self.preview_table.setItem(header_rows + i, col,
+                                                   QTableWidgetItem(f"{value:.{decimal_places}f}"))
 
             # Insert 5 rows of ellipses
             for i in range(5):
                 for col in range(num_columns):
-                    self.preview_table.setItem(row_offset + 60 + i, col, QTableWidgetItem("..."))
+                    self.preview_table.setItem(header_rows + 60 + i, col, QTableWidgetItem("..."))
 
             # Show last 35 rows
-            for i, index in enumerate(indices[-35:], start=65):
+            for i, index in enumerate(indices[-35:], start=0):  # start=0 is crucial here
                 formatted_date = index.strftime(date_format)
-                self.preview_table.setItem(row_offset + i, 0, QTableWidgetItem(formatted_date))
+                self.preview_table.setItem(header_rows + 65 + i, 0, QTableWidgetItem(formatted_date))
                 for col, (dsn, data) in enumerate(processed_data.items(), start=1):
                     value = data.loc[index].iloc[0] if index in data.index else None
                     if value is not None:
                         decimal_places = int(decimal_inputs[col - 1].text())
-                        self.preview_table.setItem(row_offset + i, col, QTableWidgetItem(f"{value:.{decimal_places}f}"))
+                        self.preview_table.setItem(header_rows + 65 + i, col,
+                                                   QTableWidgetItem(f"{value:.{decimal_places}f}"))
         else:
             # Show all rows if total is less than or equal to 100
             for i, index in enumerate(indices):
                 formatted_date = index.strftime(date_format)
-                self.preview_table.setItem(row_offset + i, 0, QTableWidgetItem(formatted_date))
+                self.preview_table.setItem(header_rows + i, 0, QTableWidgetItem(formatted_date))
                 for col, (dsn, data) in enumerate(processed_data.items(), start=1):
                     value = data.loc[index].iloc[0] if index in data.index else None
                     if value is not None:
                         decimal_places = int(decimal_inputs[col - 1].text())
-                        self.preview_table.setItem(row_offset + i, col, QTableWidgetItem(f"{value:.{decimal_places}f}"))
+                        self.preview_table.setItem(header_rows + i, col,
+                                                   QTableWidgetItem(f"{value:.{decimal_places}f}"))
 
         # Set column headers
         self.preview_table.setHorizontalHeaderLabels(
