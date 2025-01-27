@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from wdmtoolbox import wdmtoolbox
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QPushButton, QFileDialog, QLabel, QWidget, QLineEdit, QHBoxLayout, QScrollArea, QDialog
-, QCheckBox, QGridLayout, QProgressBar, QTableWidget, QTableWidgetItem, QGroupBox, QButtonGroup )
+, QCheckBox, QGridLayout, QProgressBar, QTableWidget, QTableWidgetItem, QGroupBox, QButtonGroup, QInputDialog )
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from typing import List
 from PySide6.QtCore import Qt, QTimer
@@ -117,6 +117,8 @@ class MainWindow(QMainWindow):
 
         self.selected_dsns = []  # To track user-selected DSNs
         self.metadata_store = {}  # Initialize metadata store for saving DSN metadata
+        # Initialize processed_data as an empty dictionary
+        self.processed_data = {}
 
         self.setWindowTitle("WDM Data Extractor Tool")
         self.setGeometry(100, 100, 1200, 300)  # Set window size (width=1200, height=300)
@@ -600,6 +602,16 @@ class MainWindow(QMainWindow):
         dialog.accept()  # Close the dialog after saving
         self.update_dsn_details_button_color()  # Update the button color based on completeness
 
+    def setup_export_button(self):
+        """Setup the CFA Export-OLD button."""
+        cfa_export_old_button = QPushButton("CFA Export-OLD")
+        cfa_export_old_button.clicked.connect(self.handle_cfa_export_old)
+        # Add the button to the appropriate layout or dialog
+
+    def handle_cfa_export_old(self):
+        """Handle the CFA Export-OLD button click."""
+        self.show_export_dialog()
+
     def get_metadata(self):
         """Retrieve saved metadata as a structured dictionary."""
         return self.metadata_store
@@ -727,14 +739,14 @@ class MainWindow(QMainWindow):
 
         try:
             # Process data for each selected DSN
-            processed_data = {}
+            self.processed_data = {}  # Initialize or clear the dictionary
             for dsn in self.selected_dsns:
                 data = process_wdm(file_path, [dsn])
                 resampled_data = data.resample(temporal_interval).agg(operation_type)
-                processed_data[dsn] = resampled_data.round(decimal_points)
+                self.processed_data[dsn] = resampled_data.round(decimal_points)
 
             # Show processed data preview
-            self.show_data_preview(processed_data)
+            self.show_data_preview(self.processed_data)
 
         except ValueError as e:
             self.show_error(str(e))
@@ -744,13 +756,13 @@ class MainWindow(QMainWindow):
         if self.second_checkbox.isChecked():
             return 'S'  # Second
         elif self.minute_checkbox.isChecked():
-            return 'T'  # Minute
+            return 'min'  # Minute
         elif self.hour_checkbox.isChecked():
-            return 'H'  # Hour
+            return 'h'  # Hour
         elif self.day_checkbox.isChecked():
             return 'D'  # Day
         elif self.month_checkbox.isChecked():
-            return 'ME'  # Month
+            return 'MS'  # Month
         elif self.year_checkbox.isChecked():
             return 'YE'  # Year (Annual)
         return None
@@ -776,7 +788,8 @@ class MainWindow(QMainWindow):
         self.preview_dialog.setMinimumHeight(400)
 
         # Create a table widget
-        num_rows = 3 + max(len(data) for data in processed_data.values())  # 3 header rows + max data rows
+        total_rows = max(len(data) for data in processed_data.values())
+        num_rows = min(103, total_rows)  # Limit to 103 rows (60 + 5 + 35 + 3 headers)
         num_columns = 1 + len(processed_data)  # 1 for Datetime + 1 for each DSN
         self.preview_table = QTableWidget(self.preview_dialog)  # Assign to self.preview_table
         self.preview_table.setRowCount(num_rows)
@@ -797,7 +810,7 @@ class MainWindow(QMainWindow):
             self.preview_table.setItem(1, col,
                                        QTableWidgetItem(operation_type.capitalize()))  # Use the selected operation
 
-        self.preview_table.setItem(2, 0, QTableWidgetItem("Decimal"))
+        self.preview_table.setItem(2, 0, QTableWidgetItem("Decimal Places"))
         decimal_inputs = []
         for col in range(1, num_columns):
             decimal_input = QLineEdit("2")  # Default to 2 decimal places
@@ -807,15 +820,59 @@ class MainWindow(QMainWindow):
             self.preview_table.setCellWidget(2, col, decimal_input)
             decimal_inputs.append(decimal_input)
 
+        # Determine the date format based on the temporal interval
+        temporal_interval = self.get_selected_temporal_interval()
+        if temporal_interval == 'min':  # Minute
+            date_format = "%Y-%m-%d %H:%M"
+        elif temporal_interval == 'h':  # Hourly
+            date_format = "%Y-%m-%d %H"
+        elif temporal_interval == 'D':  # Hourly
+            date_format = "%Y-%m-%d"
+        elif temporal_interval == 'MS':  # Hourly
+            date_format = "%Y-%m"
+        elif temporal_interval == 'YE':  # Yearly
+            date_format = "%Y"
+        else:
+            date_format = "%Y-%m-%d %H:%M:%S"  # Default format
+
         # Populate the table with data
         row_offset = 3  # Start after header rows
-        for i, index in enumerate(processed_data[next(iter(processed_data))].index):
-            self.preview_table.setItem(row_offset + i, 0, QTableWidgetItem(str(index)))
-            for col, (dsn, data) in enumerate(processed_data.items(), start=1):
-                value = data.loc[index].iloc[0] if index in data.index else None
-                if value is not None:
-                    decimal_places = int(decimal_inputs[col - 1].text())
-                    self.preview_table.setItem(row_offset + i, col, QTableWidgetItem(f"{value:.{decimal_places}f}"))
+        indices = processed_data[next(iter(processed_data))].index
+        if total_rows > 100:
+            # Show first 60 rows
+            for i, index in enumerate(indices[:60]):
+                formatted_date = index.strftime(date_format)
+                self.preview_table.setItem(row_offset + i, 0, QTableWidgetItem(formatted_date))
+                for col, (dsn, data) in enumerate(processed_data.items(), start=1):
+                    value = data.loc[index].iloc[0] if index in data.index else None
+                    if value is not None:
+                        decimal_places = int(decimal_inputs[col - 1].text())
+                        self.preview_table.setItem(row_offset + i, col, QTableWidgetItem(f"{value:.{decimal_places}f}"))
+
+            # Insert 5 rows of ellipses
+            for i in range(5):
+                for col in range(num_columns):
+                    self.preview_table.setItem(row_offset + 60 + i, col, QTableWidgetItem("..."))
+
+            # Show last 35 rows
+            for i, index in enumerate(indices[-35:], start=65):
+                formatted_date = index.strftime(date_format)
+                self.preview_table.setItem(row_offset + i, 0, QTableWidgetItem(formatted_date))
+                for col, (dsn, data) in enumerate(processed_data.items(), start=1):
+                    value = data.loc[index].iloc[0] if index in data.index else None
+                    if value is not None:
+                        decimal_places = int(decimal_inputs[col - 1].text())
+                        self.preview_table.setItem(row_offset + i, col, QTableWidgetItem(f"{value:.{decimal_places}f}"))
+        else:
+            # Show all rows if total is less than or equal to 100
+            for i, index in enumerate(indices):
+                formatted_date = index.strftime(date_format)
+                self.preview_table.setItem(row_offset + i, 0, QTableWidgetItem(formatted_date))
+                for col, (dsn, data) in enumerate(processed_data.items(), start=1):
+                    value = data.loc[index].iloc[0] if index in data.index else None
+                    if value is not None:
+                        decimal_places = int(decimal_inputs[col - 1].text())
+                        self.preview_table.setItem(row_offset + i, col, QTableWidgetItem(f"{value:.{decimal_places}f}"))
 
         # Set column headers
         self.preview_table.setHorizontalHeaderLabels(
@@ -864,17 +921,25 @@ class MainWindow(QMainWindow):
         QApplication.clipboard().setText(clipboard_text)
 
     def enable_export_options(self):
-        """Enable the export options."""
+        """Enable the export options if a scenario name is provided."""
+        # Check if the scenario name is entered
+        scenario_title = self.scenario_input.text().strip()
+        if not scenario_title:
+            self.show_error("Please enter a scenario name to validate the results.")
+            return
+
         # Create a dialog window for export options
         self.export_dialog = QDialog(self)
         self.export_dialog.setWindowTitle("Export Options")
-        self.export_dialog.setMinimumWidth(300)
+        self.export_dialog.setMinimumWidth(500)
 
         # Create export buttons
         txt_export_button = QPushButton("Export to .txt")
         txt_export_button.clicked.connect(self.export_to_txt)
 
         cfa_export_old_button = QPushButton("CFA Export-OLD")
+        cfa_export_old_button.clicked.connect(self.handle_cfa_export_old)  # Connect to the new method
+
         cfa_export_new_button = QPushButton("CFA Export-NEW")
         ssp_export_button = QPushButton("SSP-Export")
 
@@ -942,6 +1007,82 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.show_error(f"Error exporting data: {e}")
 
+    def export_cfa_old(self, river_name, years_to_skip):
+        """Export data in CFA format for each DSN."""
+        scenario_name = self.scenario_input.text().strip()
+        if not scenario_name:
+            self.show_error("Scenario name is required for export.")
+            return
+
+        # Create a new directory for the scenario
+        export_dir = os.path.join(os.getcwd(), scenario_name)
+        os.makedirs(export_dir, exist_ok=True)
+
+        for dsn, data in self.processed_data.items():
+            # Skip specified years
+            data_to_export = data[~data.index.year.isin(years_to_skip)]
+
+            # Open file for writing
+            file_path = os.path.join(export_dir, f"{dsn}.prn")
+            with open(file_path, 'w') as f:
+                nyears = data_to_export.index.year.nunique()
+                f.write(f"  {river_name}\n")
+                f.write(f"  NODE {dsn} {scenario_name}\n")
+                f.write(f"   {nyears}   10101    {nyears}   {nyears}     0.000\n")
+                f.write(f"   {nyears}      NUMBER OF OBSERVATIONS\n")
+                f.write("     10101   AREA\n")
+                f.write(f"     {nyears}      HISTORIC TIME SPAN\n")
+                f.write(f"     {nyears}      NUMBER OF FLOODS ABOVE\n")
+
+                for year, value in zip(data_to_export.index.year, data_to_export[data_to_export.columns[0]].values):
+                    f.write(f"{river_name}         {year}   1      {value:.2f}\n")
+
+        self.show_message("CFA Export-OLD completed successfully.")
+
+    def show_export_dialog(self):
+        """Show a dialog to collect export details and trigger the export."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("CFA Export-OLD")
+        dialog.setMinimumWidth(400)
+
+        # Create input fields
+        river_name_label = QLabel("River Name:")
+        river_name_input = QLineEdit()
+
+        years_to_skip_label = QLabel("Years to Skip (comma-separated):")
+        years_to_skip_input = QLineEdit()
+
+        # Create the "Ready to Export" button
+        export_button = QPushButton("Ready to Export")
+        export_button.clicked.connect(lambda: self.handle_export(dialog, river_name_input, years_to_skip_input))
+
+        # Layout the dialog
+        layout = QVBoxLayout()
+        layout.addWidget(river_name_label)
+        layout.addWidget(river_name_input)
+        layout.addWidget(years_to_skip_label)
+        layout.addWidget(years_to_skip_input)
+        layout.addWidget(export_button)
+        dialog.setLayout(layout)
+
+        # Show the dialog
+        dialog.exec_()
+
+    def handle_export(self, dialog, river_name_input, years_to_skip_input):
+        """Handle the export process when the user clicks 'Ready to Export'."""
+        river_name = river_name_input.text().strip()
+        if not river_name:
+            self.show_error("River Name is required for export.")
+            return
+
+        years_to_skip = [year.strip() for year in years_to_skip_input.text().split(',') if year.strip()]
+
+        # Close the dialog
+        dialog.accept()
+
+        # Perform the export
+        self.export_cfa_old(river_name, years_to_skip)
+
     def update_decimal_places(self, table, col, processed_data):
         """Update the decimal places for a specific DSN column in real-time."""
         decimal_input = table.cellWidget(2, col)
@@ -960,6 +1101,19 @@ class MainWindow(QMainWindow):
         for i, index in enumerate(data.index):
             value = data.loc[index].iloc[0]
             table.setItem(row_offset + i, col, QTableWidgetItem(f"{value:.{decimal_places}f}"))
+
+    def prompt_user_for_export_details(self):
+        """Prompt the user for River Name and Years to Skip."""
+        river_name, ok1 = QInputDialog.getText(self, "River Name", "Enter River Name:")
+        if not ok1 or not river_name.strip():
+            self.show_error("River Name is required for export.")
+            return None, None
+
+        years_to_skip, ok2 = QInputDialog.getText(self, "Years to Skip", "Enter years to skip (comma-separated):")
+        if not ok2:
+            years_to_skip = ""  # Default to no years skipped
+
+        return river_name.strip(), [year.strip() for year in years_to_skip.split(',') if year.strip()]
 
     def generate_plot(self):
         """Generate an interactive plot with Plotly."""
@@ -1030,9 +1184,6 @@ class MainWindow(QMainWindow):
             self.main_layout.removeWidget(self.error_dialog)
             self.error_dialog.deleteLater()
             self.error_dialog = None
-
-        # Optionally, adjust the window size if needed
-        self.adjustSize()
 
 def main():
     app = QApplication([])
