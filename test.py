@@ -6,7 +6,8 @@ import pyautogui
 from PIL import ImageGrab
 
 class DOSBoxController:
-    def __init__(self, dosbox_path, dosbox_config, prn_files_dir, screenshot_dir, mount_dir="C:/Temp", window_title="DOSBox"):
+    def __init__(self, dosbox_path, dosbox_config, prn_files_dir, screenshot_dir,
+                 mount_dir="C:/Temp", window_title="DOSBox"):
         self.dosbox_path = dosbox_path
         self.dosbox_config = dosbox_config
         self.prn_files_dir = prn_files_dir
@@ -61,24 +62,22 @@ class DOSBoxController:
         except Exception as e:
             print(f"Error capturing screenshot: {e}")
 
-    def process_prn(self, prn_file):
+    def start_session(self):
+        """Launch DOSBox, mount the directory, and start the CFA program."""
         self.launch()
-
-        # Mount drive and launch CFA
         self.type_command(f"mount c {self.mount_dir}")
         self.type_command("c:")
         self.type_command("CFA", press_enter=False)
         self.send_keys("enter", "enter", "enter")
 
-        # Main Menu: select options 1 and 6
-        self.send_keys("1")
-        self.send_keys("enter")
+    def process_prn_file(self, prn_file):
+        # From the main menu, select option 1 then 6 to start processing a file
+        self.send_keys("1", "enter")
         time.sleep(0.5)
-        self.send_keys("6")
-        self.send_keys("enter")
+        self.send_keys("6", "enter")
         time.sleep(0.5)
 
-        # Enter .prn file and drive letter
+        # Input the .prn file name and drive letter
         pyautogui.write(prn_file)
         self.send_keys("enter")
         pyautogui.write("C:")
@@ -86,13 +85,13 @@ class DOSBoxController:
         time.sleep(0.5)
         self.send_keys("enter")
 
-        # Frequency Analysis Main Menu and Screen navigation
+        # Navigate the Frequency Analysis menus and take the first screenshot
         self.send_keys("7", "enter", "enter", "enter")
         self.send_keys("3", "enter", "enter", "enter", "enter")
         self.take_screenshot(f"01_{prn_file}_LP3.png")
         self.send_keys("enter", "enter")
 
-        # Graph Resolution Prompt (only once per session)
+        # Execute the screen resolution prompt only for the first file
         if not self.resolution_prompted:
             pyautogui.write("97,97")
             self.send_keys("enter", "enter", "enter")
@@ -102,7 +101,7 @@ class DOSBoxController:
             self.send_keys("enter", interval=1)
             self.send_keys("enter", "enter")
 
-        # Continue Frequency Analysis with subsequent screenshots
+        # Continue with the subsequent analysis steps and screenshots
         self.send_keys("4", "enter", "enter", "enter", "enter")
         self.take_screenshot(f"03_{prn_file}_WAKEBY.png")
         self.send_keys("enter", "enter", "enter", "enter")
@@ -119,19 +118,33 @@ class DOSBoxController:
         self.send_keys("enter", interval=1)
         self.send_keys("enter", "enter")
 
+        # Return to the main menu for the next file
         self.send_keys("1")
+
+    def exit_session(self):
+        """Close the DOSBox window after processing is complete."""
         pyautogui.hotkey("alt", "f4")
 
     def process_all_prn(self):
         prn_files = [f for f in os.listdir(self.prn_files_dir) if f.endswith(".prn")]
+        if not prn_files:
+            print("No .prn files found.")
+            return
+
+        # Start a single DOSBox session and initialize the CFA program
+        self.start_session()
+
+        # Process each .prn file from the main menu
         for prn in prn_files:
             print(f"Processing {prn}...")
-            self.process_prn(prn)
+            self.process_prn_file(prn)
             print(f"Finished processing {prn}.")
 
+        # Exit the session after all files are processed
+        self.exit_session()
 
 if __name__ == "__main__":
-    # Default paths (these can be parameterized later via the GUI)
+    # Default paths (to be parameterized later via the GUI)
     dosbox_path = r"C:\Program Files (x86)\DOSBox-0.74-3\DOSBox.exe"
     dosbox_config = r"C:\Users\patel\AppData\Local\DOSBox\dosbox-0.74-3.conf"
     prn_files_dir = r"C:\Temp"
