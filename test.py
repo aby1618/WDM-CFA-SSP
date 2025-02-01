@@ -1,218 +1,141 @@
 import subprocess
 import time
-import pyautogui
 import os
-from PIL import ImageGrab, ImageChops
 import sys
+import pyautogui
+from PIL import ImageGrab
 
-# Paths (using raw strings to avoid escape sequence issues)
-dosbox_path = r"C:\Program Files (x86)\DOSBox-0.74-3\DOSBox.exe"  # Update this path
-cfa_path = r"C:\Temp"  # Path to CFA program and .prn files
-prn_files_dir = r"C:\Temp"  # Directory containing .prn files
-dosbox_config = r"C:\Users\patel\AppData\Local\DOSBox\dosbox-0.74-3.conf"  # Path to DOSBox configuration file
-screenshot_dir = r"C:\Temp"  # Directory to save screenshots
+class DOSBoxController:
+    def __init__(self, dosbox_path, dosbox_config, prn_files_dir, screenshot_dir, mount_dir="C:/Temp", window_title="DOSBox"):
+        self.dosbox_path = dosbox_path
+        self.dosbox_config = dosbox_config
+        self.prn_files_dir = prn_files_dir
+        self.screenshot_dir = screenshot_dir
+        self.mount_dir = mount_dir
+        self.window_title = window_title
+        self.resolution_prompted = False
 
-# Verify that DOSBox exists at the specified path
-if not os.path.exists(dosbox_path):
-    raise FileNotFoundError(f"DOSBox not found at: {dosbox_path}")
+        if not os.path.exists(self.dosbox_path):
+            raise FileNotFoundError(f"DOSBox not found at: {self.dosbox_path}")
+        os.makedirs(self.screenshot_dir, exist_ok=True)
 
-# Create screenshot directory if it doesn't exist7
-if not os.path.exists(screenshot_dir):
-    os.makedirs(screenshot_dir)
+    def check_window(self):
+        return bool(pyautogui.getWindowsWithTitle(self.window_title))
 
+    def ensure_window(self):
+        if not self.check_window():
+            print("DOSBox window closed. Exiting script.")
+            sys.exit()
 
-def check_dosbox_window(window_title="DOSBox"):
-    """
-    Checks if the DOSBox window is still open.
+    def launch(self):
+        subprocess.Popen([self.dosbox_path, "-conf", self.dosbox_config])
+        time.sleep(2)
+        self.activate_window()
 
-    Args:
-        window_title (str): The title of the DOSBox window (default is "DOSBox").
+    def activate_window(self):
+        self.ensure_window()
+        window = pyautogui.getWindowsWithTitle(self.window_title)[0]
+        window.activate()
+        time.sleep(0.5)
 
-    Returns:
-        bool: True if the window is open, False otherwise.
-    """
-    try:
-        # Find the DOSBox window by its title
-        pyautogui.getWindowsWithTitle(window_title)[0]
-        return True
-    except IndexError:
-        # Window not found
-        return False
+    def send_keys(self, *keys, interval=0.1):
+        for key in keys:
+            pyautogui.press(key)
+            time.sleep(interval)
 
-# Function to simulate keystrokes with delays
-def send_keys(*keys, interval=0.1):
-    """
-    Simulates pressing multiple keys with a delay between each key press.
+    def type_command(self, command, interval=0.01, press_enter=True, extra_delay=0.5):
+        pyautogui.write(command, interval=interval)
+        time.sleep(extra_delay)
+        if press_enter:
+            pyautogui.press("enter")
+        self.ensure_window()
 
-    Args:
-        *keys: Variable number of keys to press (e.g., "enter", "1", "a").
-        interval (float): Delay between key presses in seconds (default is 0.1).
-    """
-    for key in keys:
-        pyautogui.press(key)
-        time.sleep(interval)
+    def take_screenshot(self, filename):
+        try:
+            window = pyautogui.getWindowsWithTitle(self.window_title)[0]
+            left, top, width, height = window.left, window.top, window.width, window.height
+            img = ImageGrab.grab(bbox=(left, top, left + width, top + height))
+            filepath = os.path.join(self.screenshot_dir, filename)
+            img.save(filepath)
+            print(f"Screenshot saved: {filepath}")
+        except Exception as e:
+            print(f"Error capturing screenshot: {e}")
 
-    # Function to take a screenshot and save it
+    def process_prn(self, prn_file):
+        self.launch()
 
+        # Mount drive and launch CFA
+        self.type_command(f"mount c {self.mount_dir}")
+        self.type_command("c:")
+        self.type_command("CFA", press_enter=False)
+        self.send_keys("enter", "enter", "enter")
 
-def take_screenshot(filename, window_title="DOSBox", timeout=30):
-    """
-    Captures a screenshot of the specified window once the graph is fully prepared.
+        # Main Menu: select options 1 and 6
+        self.send_keys("1")
+        self.send_keys("enter")
+        time.sleep(0.5)
+        self.send_keys("6")
+        self.send_keys("enter")
+        time.sleep(0.5)
 
-    Args:
-        filename (str): The name of the file to save the screenshot.
-        window_title (str): The title of the window to capture (default is "DOSBox").
-        timeout (int): Maximum time to wait for the graph to be prepared (default is 30 seconds).
-    """
-    try:
-        # Find the CFA (DOSBox) window by its title
-        cfa_window = pyautogui.getWindowsWithTitle(window_title)[0]
+        # Enter .prn file and drive letter
+        pyautogui.write(prn_file)
+        self.send_keys("enter")
+        pyautogui.write("C:")
+        self.send_keys("enter")
+        time.sleep(0.5)
+        self.send_keys("enter")
 
-        # Get the window's position and size
-        left, top, width, height = cfa_window.left, cfa_window.top, cfa_window.width, cfa_window.height
+        # Frequency Analysis Main Menu and Screen navigation
+        self.send_keys("7", "enter", "enter", "enter")
+        self.send_keys("3", "enter", "enter", "enter", "enter")
+        self.take_screenshot(f"01_{prn_file}_LP3.png")
+        self.send_keys("enter", "enter")
 
-        # Capture the initial screenshot
-        previous_screenshot = ImageGrab.grab(bbox=(left, top, left + width, top + height))
+        # Graph Resolution Prompt (only once per session)
+        if not self.resolution_prompted:
+            pyautogui.write("97,97")
+            self.send_keys("enter", "enter", "enter")
+            time.sleep(9.5)
+            self.take_screenshot(f"02_{prn_file}_LP3_GRAPH.png")
+            self.resolution_prompted = True
+            self.send_keys("enter", interval=1)
+            self.send_keys("enter", "enter")
 
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            # Wait for a short interval
-            time.sleep(1)
+        # Continue Frequency Analysis with subsequent screenshots
+        self.send_keys("4", "enter", "enter", "enter", "enter")
+        self.take_screenshot(f"03_{prn_file}_WAKEBY.png")
+        self.send_keys("enter", "enter", "enter", "enter")
+        time.sleep(9.5)
+        self.take_screenshot(f"04_{prn_file}_WAKEBY_GRAPH.png")
+        self.send_keys("enter", interval=1)
+        self.send_keys("enter", "enter")
 
-            # Capture the current screenshot
-            current_screenshot = ImageGrab.grab(bbox=(left, top, left + width, top + height))
+        self.send_keys("1", "enter", "enter", "enter", "enter")
+        self.take_screenshot(f"05_{prn_file}_GEV.png")
+        self.send_keys("enter", "enter", "enter", "enter")
+        time.sleep(9.5)
+        self.take_screenshot(f"06_{prn_file}_GEV_GRAPH.png")
+        self.send_keys("enter", interval=1)
+        self.send_keys("enter", "enter")
 
-            # Compare the current screenshot with the previous one
-            difference = ImageChops.difference(previous_screenshot, current_screenshot)
-            if not difference.getbbox():  # No difference between screenshots
-                # Graph is fully prepared, save the final screenshot
-                current_screenshot.save(filename)
-                print(f"Screenshot saved: {filename}")
-                return
+        self.send_keys("1")
+        pyautogui.hotkey("alt", "f4")
 
-            # Update the previous screenshot
-            previous_screenshot = current_screenshot
+    def process_all_prn(self):
+        prn_files = [f for f in os.listdir(self.prn_files_dir) if f.endswith(".prn")]
+        for prn in prn_files:
+            print(f"Processing {prn}...")
+            self.process_prn(prn)
+            print(f"Finished processing {prn}.")
 
-        # If the loop ends due to timeout, save the last screenshot
-        current_screenshot.save(filename)
-        print(f"Screenshot saved (timeout reached): {filename}")
-    except IndexError:
-        print(f"Window with title '{window_title}' not found. Ensure the CFA window is open.")
-    except Exception as e:
-        print(f"Error capturing screenshot: {e}")
-
-# Function to process a single .prn file
-def process_prn_file(prn_file, resolution_prompted=False):
-    # Launch CFA in DOSBox
-    subprocess.Popen([dosbox_path, "-conf", dosbox_config])
-    time.sleep(2)  # Wait for DOSBox to launch (increase delay if needed)
-
-    # Bring DOSBox window into focus
-    try:
-        dosbox_window = pyautogui.getWindowsWithTitle("DOSBox")[0]
-        dosbox_window.activate()
-    except IndexError:
-        raise Exception("DOSBox window not found. Ensure DOSBox is running and the window title is correct.")
-    time.sleep(0.5)  # Wait for the window to come into focus
-
-    # Mount C:\Temp to C: in DOSBox (using forward slashes)
-    if not check_dosbox_window():
-    # Mount C:\Temp to C: in DOSBox (using forward slashes)
-        print("DOSBox window closed. Exiting script.")
-        sys.exit()
-
-    pyautogui.write("mount c C:/Temp", interval=0.01)  # Type the mount command with a delay between keystrokes
-    time.sleep(0.5)  # Small delay to ensure the command is fully typed
-    pyautogui.press("enter")  # Press Enter to execute the command
-
-    if not check_dosbox_window():
-        print("DOSBox window closed. Exiting script.")
-        sys.exit()
-
-    # Switch to C: drive
-    pyautogui.write("c:", interval=0.01)  # Type c: with a delay between keystrokes
-    time.sleep(0.5)  # Small delay to ensure the command is fully typed
-    pyautogui.press("enter")  # Press Enter to switch to C:
-    pyautogui.write("CFA", interval=0.01)
-
-    # Press Enter twice
-    send_keys("enter", "enter", "enter", interval = 0.1)
-
-    # Main Menu: Press 1, then 6
-    pyautogui.press("1")
-    pyautogui.press("enter")
-    time.sleep(0.5)
-    pyautogui.press("6")
-    pyautogui.press("enter")
-    time.sleep(0.5)
-
-    # Enter .prn file name and drive
-    pyautogui.write(prn_file)  # Enter .prn file name
-    send_keys("enter")
-    pyautogui.write("C:")  # Enter drive letter
-    send_keys("enter")
-
-    # Wait for processing
-    time.sleep(0.5)
-
-    # Press Enter again to return to main menu
-    send_keys("enter")
-
-    # Go to Frequency Analysis Main Menu: Press 7, then Enter three times
-    send_keys("7", "enter", "enter", "enter", interval = 0.1)
-
-    # Frequency Analysis Main Screen: Press 3, then Enter four times
-    send_keys("3", "enter", "enter", "enter", "enter", interval = 0.1)
-    take_screenshot(f"01_{prn_file}_LP3.png")  # Take screenshot
-    send_keys("enter", "enter")  # Press Enter twice
-
-    # Graph Resolution Prompt (Only Once per Session)
-    if not resolution_prompted:
-        pyautogui.write("97,97")  # Enter resolution
-        send_keys("enter", "enter", "enter", interval = 0.1)
-        # Wait for processing
-        take_screenshot(f"02_{prn_file}_LP3_GRAPH.png")  # Take screenshot
-        resolution_prompted = True
-        send_keys("enter", interval = 1)
-        send_keys( "enter", "enter", interval = 0.1)
-
-    # Continue Frequency Analysis: Press 4, then Enter four times
-    send_keys("4", "enter", "enter", "enter", "enter", interval = 0.1)
-    take_screenshot(f"03_{prn_file}_WAKEBY.png")  # Take screenshot
-    send_keys("enter", "enter", "enter", "enter", interval = 0.1)  # Press Enter four times
-    # Wait for processing
-    take_screenshot(f"04_{prn_file}_WAKEBY_GRAPH.png")  # Take screenshot
-    send_keys("enter", interval=1)
-    send_keys("enter", "enter", interval=0.1)
-
-    # Return to Frequency Analysis Main Screen: Press 1, then Enter four times
-    send_keys("1", "enter", "enter", "enter", "enter", interval = 0.1)
-    take_screenshot(f"05_{prn_file}_GEV.png")  # Take screenshot
-    send_keys("enter", "enter", "enter", "enter", interval = 0.1)  # Press Enter four times
-    # Wait for processing
-    take_screenshot(f"06_{prn_file}_GEV_GRAPH.png")  # Take screenshot
-    send_keys("enter", interval=1)
-    send_keys("enter", "enter", interval=0.1)
-
-    # Return to Main Window Screen: Press 1
-    send_keys("1")
-
-    # Close DOSBox
-    pyautogui.hotkey("alt", "f4")
-
-    return resolution_prompted
-
-# Main function
-def main():
-    # Get list of .prn files
-    prn_files = [f for f in os.listdir(prn_files_dir) if f.endswith(".prn")]
-    resolution_prompted = False
-
-    # Process each .prn file
-    for prn_file in prn_files:
-        print(f"Processing {prn_file}...")
-        resolution_prompted = process_prn_file(prn_file, resolution_prompted)
-        print(f"Finished processing {prn_file}.")
 
 if __name__ == "__main__":
-    main()
+    # Default paths (these can be parameterized later via the GUI)
+    dosbox_path = r"C:\Program Files (x86)\DOSBox-0.74-3\DOSBox.exe"
+    dosbox_config = r"C:\Users\patel\AppData\Local\DOSBox\dosbox-0.74-3.conf"
+    prn_files_dir = r"C:\Temp"
+    screenshot_dir = r"C:\Temp"
+
+    controller = DOSBoxController(dosbox_path, dosbox_config, prn_files_dir, screenshot_dir)
+    controller.process_all_prn()
