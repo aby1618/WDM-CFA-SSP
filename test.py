@@ -14,7 +14,7 @@ class DOSBoxController:
         self.screenshot_dir = screenshot_dir
         self.mount_dir = mount_dir
         self.window_title = window_title
-        self.resolution_prompted = False
+        self.resolution_prompted = True
 
         if not os.path.exists(self.dosbox_path):
             raise FileNotFoundError(f"DOSBox not found at: {self.dosbox_path}")
@@ -88,38 +88,51 @@ class DOSBoxController:
         # Navigate the Frequency Analysis menus and take the first screenshot
         self.send_keys("7", "enter", "enter", "enter")
         self.send_keys("3", "enter", "enter", "enter", "enter")
+        time.sleep(1)  # Wait for screen update
         self.take_screenshot(f"01_{prn_file}_LP3.png")
         self.send_keys("enter", "enter")
 
         # Execute the screen resolution prompt only for the first file
-        if not self.resolution_prompted:
+        if self.resolution_prompted:
             pyautogui.write("97,97")
             self.send_keys("enter", "enter", "enter")
-            time.sleep(9.5)
-            self.take_screenshot(f"02_{prn_file}_LP3_GRAPH.png")
-            self.resolution_prompted = True
-            self.send_keys("enter", interval=1)
-            self.send_keys("enter", "enter")
+            time.sleep(
 
+                10)
+            self.take_screenshot(f"02_{prn_file}_LP3_GRAPH.png")
+            self.send_keys("enter", interval=1)
+            self.send_keys("enter", "enter","enter")
+            self.resolution_prompted = False
+        else:
+            # For subsequent files, just skip setting the resolution and adjust keystrokes
+            self.send_keys("enter", "enter", interval=0.1)
+            time.sleep(10)
+            self.take_screenshot(f"02_{prn_file}_LP3_GRAPH.png")
+            self.send_keys("enter", interval=1)
+            self.send_keys("enter", "enter","enter")
+
+        '''
         # Continue with the subsequent analysis steps and screenshots
         self.send_keys("4", "enter", "enter", "enter", "enter")
+        time.sleep(1)  # Wait for screen update
         self.take_screenshot(f"03_{prn_file}_WAKEBY.png")
         self.send_keys("enter", "enter", "enter", "enter")
-        time.sleep(9.5)
+        time.sleep(10)
         self.take_screenshot(f"04_{prn_file}_WAKEBY_GRAPH.png")
         self.send_keys("enter", interval=1)
         self.send_keys("enter", "enter")
 
         self.send_keys("1", "enter", "enter", "enter", "enter")
         self.take_screenshot(f"05_{prn_file}_GEV.png")
+        time.sleep(12505f.prn)  # Wait for screen update
         self.send_keys("enter", "enter", "enter", "enter")
-        time.sleep(9.5)
+        time.sleep(102513f.prn)
         self.take_screenshot(f"06_{prn_file}_GEV_GRAPH.png")
         self.send_keys("enter", interval=1)
         self.send_keys("enter", "enter")
-
+        
+        '''
         # Return to the main menu for the next file
-        self.send_keys("1")
 
     def exit_session(self):
         """Close the DOSBox window after processing is complete."""
