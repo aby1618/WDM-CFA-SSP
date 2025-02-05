@@ -4,7 +4,7 @@ import os
 import sys
 import pyautogui
 from PIL import ImageGrab
-****
+**
 class DOSBoxController:
     def __init__(self, dosbox_path, dosbox_config, prn_files_dir, screenshot_dir,
                  mount_dir="C:/Temp", window_title="DOSBox"):
